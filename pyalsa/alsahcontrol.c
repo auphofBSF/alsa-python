@@ -123,17 +123,10 @@ static PyObject *
 pyalsahcontrol_handleevents(struct pyalsahcontrol *self, PyObject *args)
 {
 	int err;
-	// PyGILState_STATE gstate;
-	// gstate = PyGILState_Ensure();
 
 	Py_BEGIN_ALLOW_THREADS;
-	// err = 0;
-	printf("pyalsahcontrol_handleevents ====== Before snd_hctl_handle_events:\n");
 	err = snd_hctl_handle_events(self->handle);
-	printf("pyalsahcontrol_handleevents ====== AFTER snd_hctl_handle_events:\n");
 	Py_END_ALLOW_THREADS;
-	/* Release the thread. No Python API allowed beyond this point. */
-	// PyGILState_Release(gstate);
 	if (err < 0)
 		PyErr_Format(PyExc_IOError,
 		     "HControl handle events error: %s", strerror(-err));
@@ -1527,9 +1520,8 @@ MOD_INIT(alsahcontrol)
 
 static int element_callback(snd_hctl_elem_t *elem, unsigned int mask)
 {
-	// PyEval_AcquireLock();
-	printf("====== element_callback:\n");
-	PyThreadState *tstate, *origstate;
+
+	PyThreadState *tstate;
 	struct pyalsahcontrolelement *pyhelem;
 	PyObject *o, *t, *r;
 	int res = 0, inside = 1;
@@ -1539,34 +1531,23 @@ static int element_callback(snd_hctl_elem_t *elem, unsigned int mask)
 	pyhelem = snd_hctl_elem_get_callback_private(elem);
 	if (pyhelem == NULL || pyhelem->callback == NULL)
 		return -EINVAL;
-	origstate = NULL;
-	// origstate = PyEval_SaveThread();
 	PyGILState_STATE gstate;
 	gstate = PyGILState_Ensure();
 
 	tstate = PyThreadState_New(main_interpreter);
-	// origstate = PyThreadState_Swap(tstate);
-
-	// PyEval_RestoreThread(tstate);
-
-	printf("====== element_callback: --- Thread new created\n");
 	o = PyObject_GetAttr(pyhelem->callback, InternFromString("callback"));
 	if (!o) {
 		PyErr_Clear();
 		o = pyhelem->callback;
 		inside = 0;
 	}
-	printf("====== element_callback: --- pyhelem->callback\n");
 	t = PyTuple_New(2);
 	if (t) {
 		if (PyTuple_SET_ITEM(t, 0, (PyObject *)pyhelem))
 			Py_INCREF(pyhelem);
 		PyTuple_SET_ITEM(t, 1, PyInt_FromLong(mask));
-		// Py_BEGIN_ALLOW_THREADS
 		r = PyObject_CallObject(o, t);
-		// Py_END_ALLOW_THREADS 
 		Py_DECREF(t);
-		printf("====== element_callback: --- PyObject_CallObject\n");
 		if (r) {
 			if (PyLong_Check(r)) {
 				res = PyLong_AsLong(r);
@@ -1587,24 +1568,10 @@ static int element_callback(snd_hctl_elem_t *elem, unsigned int mask)
 	if (inside) {
 		Py_DECREF(o);
 	}
-	printf("====== element_callback: --- about to swap threadstate.\n");
-
-
-	// printf("====== element_callback: --- DONE: PyEval_ReleaseLock.\n");
-	
-	// PyThreadState_Swap(origstate);
-	// printf("====== element_callback: --- DONE: PyThreadState_Swap.\n");
 
 	PyThreadState_Clear(tstate);
-	printf("====== element_callback: --- DONE: PyThreadState_Clear.\n");
 	PyThreadState_Delete(tstate);
-	printf("====== element_callback: --- DONE: PyThreadState_Delete.\n");
-	// PyEval_RestoreThread(origstate);
-	// printf("====== element_callback: --- DONE: PyEval_RestoreThread.\n");
 	PyGILState_Release(gstate);
-	printf("====== element_callback: --- DONE: PyGILState_Release.\n");
-
-	// PyEval_ReleaseLock();
 
 	return res;
 }
